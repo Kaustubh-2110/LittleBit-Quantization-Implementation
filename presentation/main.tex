@@ -4,7 +4,7 @@
 
 \title{LittleBit: Ultra Low-Bit Quantization via Latent Factorization}
 \subtitle{Methodology Analysis and Detailed Explanation}
-\author{Analysis by Antigravity}
+\author{Kaustubh}
 \date{\today}
 
 \usepackage{amsmath}
@@ -37,19 +37,19 @@
     The LittleBit methodology consists of three main components:
     \begin{enumerate}
         \item \textbf{LittleBit Architecture}:
-            \begin{itemize}
-                \item Latent Factorization ($W \approx UV^\top$)
-                \item Binarization ($U_{sign}, V_{sign}$)
-                \item Multi-Scale Compensation ($h, g, \ell$)
-            \end{itemize}
+              \begin{itemize}
+                  \item Latent Factorization ($W \approx UV^\top$)
+                  \item Binarization ($U_{sign}, V_{sign}$)
+                  \item Multi-Scale Compensation ($h, g, \ell$)
+              \end{itemize}
         \item \textbf{Dual-SVID Initialization}:
-            \begin{itemize}
-                \item Smart initialization of parameters using SVD.
-            \end{itemize}
+              \begin{itemize}
+                  \item Smart initialization of parameters using SVD.
+              \end{itemize}
         \item \textbf{Residual Compensation}:
-            \begin{itemize}
-                \item A secondary path to correct approximation errors.
-            \end{itemize}
+              \begin{itemize}
+                  \item A secondary path to correct approximation errors.
+              \end{itemize}
     \end{enumerate}
 \end{frame}
 
@@ -58,43 +58,17 @@
     \textbf{Concept}:
     \begin{itemize}
         \item LLM weight matrices often exhibit low-rank structure.
-        \item Instead of storing the full matrix $W \in \mathbb{R}^{d_{out} \times d_{in}}$, we approximate it as the product of two smaller matrices.
+        \item Instead of storing the full matrix $W \in \mathbb{R}_{d_{out} \times d_{in}}$, we approximate it as the product of two smaller matrices.
     \end{itemize}
-    
+
     \textbf{Equation}:
     \[ W \approx U V^\top \]
     where:
     \begin{itemize}
-        \item $U \in \mathbb{R}^{d_{out} \times r}$
-        \item $V \in \mathbb{R}^{d_{in} \times r}$
+        \item $U \in \mathbb{R}_{d_{out} \times r}$
+        \item $V \in \mathbb{R}_{d_{in} \times r}$
         \item $r \ll \min(d_{out}, d_{in})$ is the latent rank.
     \end{itemize}
-\end{frame}
-
-\begin{frame}{Step 1: Example}
-    Let $W$ be a $4 \times 4$ matrix and rank $r=2$.
-    \[
-    W = \begin{bmatrix}
-    1.2 & 0.8 & -0.5 & 1.0 \\
-    -1.0 & -0.6 & 0.4 & -0.8 \\
-    0.5 & 0.3 & -0.2 & 0.4 \\
-    2.0 & 1.4 & -0.9 & 1.8
-    \end{bmatrix}
-    \]
-    We decompose this into $U$ ($4 \times 2$) and $V^\top$ ($2 \times 4$).
-    \[
-    U = \begin{bmatrix}
-    0.5 & 0.1 \\
-    -0.4 & 0.2 \\
-    0.2 & -0.1 \\
-    0.8 & 0.3
-    \end{bmatrix}, \quad
-    V^\top = \begin{bmatrix}
-    2.0 & 1.5 & -1.0 & 1.8 \\
-    1.0 & 0.5 & 0.2 & 0.4
-    \end{bmatrix}
-    \]
-    The product $UV^\top$ approximates $W$.
 \end{frame}
 
 \section{Step 2: Binarization}
@@ -104,33 +78,10 @@
         \item To achieve extreme compression, the factors $U$ and $V$ are binarized to $\pm 1$.
         \item This reduces storage from 16-bit FP to 1-bit per element.
     \end{itemize}
-    
+
     \textbf{Equation}:
     \[ U_{sign} = \text{sign}(U), \quad V_{sign} = \text{sign}(V) \]
     Values in $U_{sign}, V_{sign} \in \{-1, +1\}$.
-\end{frame}
-
-\begin{frame}{Step 2: Example}
-    Using the previous $U$:
-    \[
-    U = \begin{bmatrix}
-    0.5 & 0.1 \\
-    -0.4 & 0.2 \\
-    0.2 & -0.1 \\
-    0.8 & 0.3
-    \end{bmatrix}
-    \xrightarrow{\text{sign}}
-    U_{sign} = \begin{bmatrix}
-    +1 & +1 \\
-    -1 & +1 \\
-    +1 & -1 \\
-    +1 & +1
-    \end{bmatrix}
-    \]
-    Similarly for $V$.
-    \vspace{0.5cm}
-    
-    \textit{Note}: This drastic quantization causes significant information loss (magnitude information is lost).
 \end{frame}
 
 \section{Step 3: Multi-Scale Compensation}
@@ -140,62 +91,33 @@
         \item To recover the lost magnitude information, LittleBit introduces learnable FP16 scales.
         \item Scales are applied across three dimensions: Row, Column, and Latent.
     \end{itemize}
-    
+
     \textbf{Scales}:
     \begin{itemize}
-        \item \textbf{Row Scale} $h \in \mathbb{R}^{d_{out}}$: Captures output channel magnitude.
-        \item \textbf{Column Scale} $g \in \mathbb{R}^{d_{in}}$: Captures input channel magnitude.
-        \item \textbf{Latent Scale} $\ell \in \mathbb{R}^{r}$: Captures the importance of each latent rank.
+        \item \textbf{Row Scale} $h \in \mathbb{R}_{d_{out}}$: Captures output channel magnitude.
+        \item \textbf{Column Scale} $g \in \mathbb{R}_{d_{in}}$: Captures input channel magnitude.
+        \item \textbf{Latent Scale} $\ell \in \mathbb{R}_{r}$: Captures the importance of each latent rank.
     \end{itemize}
-    
+
     \textbf{Reconstruction}:
     \[ \hat{W}_{pri} = \text{diag}(h) \cdot U_{sign} \cdot \text{diag}(\ell) \cdot V_{sign}^\top \cdot \text{diag}(g) \]
-\end{frame}
-
-\begin{frame}{Step 3: Example}
-    Let $r=2$.
-    Latent scale $\ell = [2.5, 0.5]^\top$.
-    Row scale $h = [1.0, 0.8, 0.5, 1.2]^\top$.
-    
-    The term $U_{sign} \cdot \text{diag}(\ell)$ scales the columns of the binary matrix $U_{sign}$:
-    \[
-    \begin{bmatrix}
-    +1 & +1 \\
-    -1 & +1 \\
-    +1 & -1 \\
-    +1 & +1
-    \end{bmatrix}
-    \cdot
-    \begin{bmatrix}
-    2.5 & 0 \\
-    0 & 0.5
-    \end{bmatrix}
-    =
-    \begin{bmatrix}
-    2.5 & 0.5 \\
-    -2.5 & 0.5 \\
-    2.5 & -0.5 \\
-    2.5 & 0.5
-    \end{bmatrix}
-    \]
-    This restores relative importance to the binary features.
 \end{frame}
 
 \section{Step 4: Dual-SVID Initialization}
 \begin{frame}{Step 4: Dual-SVID Initialization}
     \textbf{Problem}: Random initialization of $U, V, h, g, \ell$ leads to unstable training.
-    
+
     \textbf{Solution}: Dual-SVID.
     \begin{enumerate}
         \item Perform SVD on $W$: $W \approx U' \Sigma V'^\top$. Absorb $\Sigma$ into $U', V'$.
         \item Initialize binary factors: $U_{sign,0} = \text{sign}(U')$.
         \item Initialize scales by approximating the \textit{magnitudes} $|U'|$ and $|V'|$.
     \end{enumerate}
-    
+
     \textbf{Magnitude Decomposition}:
     \[ |U'| \approx h_0 (\ell_{u,0})^\top \]
     We use a rank-1 approximation on the magnitude matrix $|U'|$ to separate the row-wise scale ($h_0$) from the latent-wise scale ($\ell_{u,0}$).
-    
+
     Final latent scale $\ell_0 = \ell_{u,0} \odot \ell_{v,0}$.
 \end{frame}
 
@@ -206,28 +128,16 @@
         \item A single low-rank binary approximation might miss details.
         \item Add a second "Residual" path to model the error.
     \end{itemize}
-    
+
     \textbf{Architecture}:
     \[ \hat{W} = \hat{W}_{pri} + \hat{W}_{res} \]
     \begin{itemize}
         \item $\hat{W}_{pri}$: Primary approximation (learns main structure).
         \item $\hat{W}_{res}$: Residual approximation (learns the error $W - \hat{W}_{pri}$).
     \end{itemize}
-    
+
     Both paths use the same factorized structure but with independent parameters.
     This effectively doubles the rank but allows for specialized error correction without increasing the storage format complexity (just more parameters).
-\end{frame}
-
-\begin{frame}{Step 5: Example}
-    Target $W_{val} = 1.2$.
-    \begin{itemize}
-        \item \textbf{Primary Path}: Approximates as $1.0$. Error $= 0.2$.
-        \item \textbf{Residual Path}: Targets $0.2$. Approximates as $0.25$.
-        \item \textbf{Total}: $1.0 + 0.25 = 1.25$.
-    \end{itemize}
-    Error reduced from $0.2$ to $0.05$.
-    
-    The residual path is initialized using Dual-SVID on the residual matrix $W_{res,0} = W - \hat{W}_{pri,0}$.
 \end{frame}
 
 \section{Training}
@@ -237,12 +147,386 @@
         \item The model is trained end-to-end.
         \item \textbf{Knowledge Distillation}: Uses the original FP16 model as a teacher.
         \item \textbf{Loss Function}:
-        \[ L_{QAT} = L_{out} (KL) + \lambda L_{inter} (MSE) \]
+              \[ L_{QAT} = L_{out} (KL) + \lambda L_{inter} (MSE) \]
         \item \textbf{Gradient Approximation}:
-        Since $\text{sign}(x)$ is non-differentiable, \textbf{SmoothSign} is used for backpropagation:
-        \[ \frac{\partial \text{sign}(x)}{\partial x} \approx \frac{\partial \tanh(kx)}{\partial x} \]
-        with $k=100$.
+              Since $\text{sign}(x)$ is non-differentiable, \textbf{SmoothSign} is used for backpropagation:
+              \[ \frac{\partial \text{sign}(x)}{\partial x} \approx \frac{\partial \tanh(kx)}{\partial x} \]
+              with $k=100$.
     \end{itemize}
+\end{frame}
+
+\section{Example Walkthrough}
+\begin{frame}{Example: Input Matrix}
+    Consider a $4 \times 4$ matrix $W$:
+    \[
+        W = \begin{bmatrix}
+            1.50  & -0.80 & 0.20  & -1.20 \\
+            -0.50 & 1.20  & -0.90 & 0.50  \\
+            0.80  & -0.20 & 1.50  & -0.50 \\
+            -1.20 & 0.50  & -0.30 & 1.00  \\
+        \end{bmatrix}
+    \]
+\end{frame}
+
+\begin{frame}{Example: Step 1 - Latent Factorization (Part 1)}
+    1. Perform SVD on $W$: $W = U \Sigma V^\top$
+    \[
+        U_{full} = \begin{bmatrix}
+            -0.61 & -0.52 & -0.59 & -0.07 \\
+            0.44  & -0.37 & -0.19 & -0.79 \\
+            -0.45 & 0.70  & -0.54 & -0.13 \\
+            0.49  & 0.33  & -0.56 & 0.59  \\
+        \end{bmatrix}
+    \]
+    \[
+        \Sigma_{full} = \begin{bmatrix}
+            3.26 & 0.00 & 0.00 & 0.00 \\
+            0.00 & 1.32 & 0.00 & 0.00 \\
+            0.00 & 0.00 & 0.83 & 0.00 \\
+            0.00 & 0.00 & 0.00 & 0.05 \\
+        \end{bmatrix}
+    \]
+    \[
+        V_{full}^\top = \begin{bmatrix}
+            -0.64 & 0.41  & -0.41 & 0.51 \\
+            -0.32 & -0.00 & 0.89  & 0.32 \\
+            -0.37 & -0.90 & -0.18 & 0.12 \\
+            0.59  & -0.13 & -0.07 & 0.79 \\
+        \end{bmatrix}
+    \]
+\end{frame}
+
+\begin{frame}{Example: Step 1 - Latent Factorization (Part 2)}
+    2. Truncate to rank $r=2$. Keep top 2 singular values.
+    \[
+        U_r = \begin{bmatrix}
+            -0.61 & -0.52 \\
+            0.44  & -0.37 \\
+            -0.45 & 0.70  \\
+            0.49  & 0.33  \\
+        \end{bmatrix}, \quad
+        \Sigma_r = \begin{bmatrix}
+            3.26 & 0.00 \\
+            0.00 & 1.32 \\
+        \end{bmatrix}
+    \]
+    \[
+        V_r^\top = \begin{bmatrix}
+            -0.64 & 0.41  & -0.41 & 0.51 \\
+            -0.32 & -0.00 & 0.89  & 0.32 \\
+        \end{bmatrix}
+    \]
+\end{frame}
+
+\begin{frame}{Example: Step 1 - Latent Factorization (Part 3)}
+    3. Calculate $\sqrt{\Sigma_r}$ and absorb into factors.
+    \[
+        \sqrt{\Sigma_r} = \begin{bmatrix}
+            \sqrt{3.26} & 0           \\
+            0           & \sqrt{1.32}
+        \end{bmatrix} = \begin{bmatrix}
+            1.81 & 0.00 \\
+            0.00 & 1.15 \\
+        \end{bmatrix}
+    \]
+
+    Calculate $U' = U_r \sqrt{\Sigma_r}$:
+    \[
+        U' = \begin{bmatrix}
+            -0.61 & -0.52 \\
+            0.44  & -0.37 \\
+            -0.45 & 0.70  \\
+            0.49  & 0.33  \\
+        \end{bmatrix}
+        \begin{bmatrix}
+            1.81 & 0.00 \\
+            0.00 & 1.15 \\
+        \end{bmatrix}
+        = \begin{bmatrix}
+            -1.09 & -0.59 \\
+            0.79  & -0.42 \\
+            -0.81 & 0.80  \\
+            0.89  & 0.38  \\
+        \end{bmatrix}
+    \]
+\end{frame}
+
+\begin{frame}{Example: Step 1 - Latent Factorization (Part 4)}
+    Calculate $V' = V_r \sqrt{\Sigma_r}$ (shown as $V'^\top$):
+    \[
+        V'^\top = \sqrt{\Sigma_r} V_r^\top =
+        \begin{bmatrix}
+            1.81 & 0.00 \\
+            0.00 & 1.15 \\
+        \end{bmatrix}
+        \begin{bmatrix}
+            -0.64 & 0.41  & -0.41 & 0.51 \\
+            -0.32 & -0.00 & 0.89  & 0.32 \\
+        \end{bmatrix}
+    \]
+    \[
+        V'^\top = \begin{bmatrix}
+            -1.15 & 0.75  & -0.74 & 0.92 \\
+            -0.37 & -0.00 & 1.03  & 0.36 \\
+        \end{bmatrix}
+    \]
+\end{frame}
+
+\begin{frame}{Example: Step 2 - Binarization}
+    \[
+        U_{sign} = \begin{bmatrix}
+            -1 & -1 \\
+            1  & -1 \\
+            -1 & 1  \\
+            1  & 1  \\
+        \end{bmatrix}, \quad
+        V_{sign}^\top = \begin{bmatrix}
+            -1 & 1  & -1 & 1 \\
+            -1 & -1 & 1  & 1 \\
+        \end{bmatrix}
+    \]
+\end{frame}
+
+\begin{frame}{Example: Step 3 - Multi-Scale Compensation (Part 1)}
+    1. Compute Magnitude Matrices $|U'|$ and $|V'|$ (element-wise absolute value):
+    \[
+        |U'| = \begin{bmatrix}
+            1.09 & 0.59 \\
+            0.79 & 0.42 \\
+            0.81 & 0.80 \\
+            0.89 & 0.38 \\
+        \end{bmatrix}, \quad
+        |V'|^\top = \begin{bmatrix}
+            1.15 & 0.75 & 0.74 & 0.92 \\
+            0.37 & 0.00 & 1.03 & 0.36 \\
+        \end{bmatrix}
+    \]
+\end{frame}
+
+\begin{frame}{Example: Step 3 - Multi-Scale Compensation (Part 2)}
+    2. SVD of Magnitude Matrix $|U'|$:
+    \[
+        U_{mag} = \begin{bmatrix}
+            -0.59 & -0.19 & -0.78 & -0.07 \\
+            -0.42 & -0.07 & 0.27  & 0.86  \\
+            -0.52 & 0.84  & -0.09 & -0.12 \\
+            -0.45 & -0.50 & 0.56  & -0.49 \\
+        \end{bmatrix}
+    \]
+    \[
+        \Sigma_{mag} = \begin{bmatrix}
+            2.12 & 0.00 \\
+            0.00 & 0.31 \\
+            0.00 & 0.00 \\
+            0.00 & 0.00 \\
+        \end{bmatrix}, \quad
+        V_{mag}^\top = \begin{bmatrix}
+            -0.85 & -0.53 \\
+            -0.53 & 0.85  \\
+        \end{bmatrix}
+    \]
+\end{frame}
+
+\begin{frame}{Example: Step 3 - Multi-Scale Compensation (Part 3)}
+    3. Truncate to Rank-1 (Keep top singular value $\sigma_1$ and vectors $u_1, v_1$):
+    \[
+        u_1 = \begin{bmatrix}
+            -0.59 \\
+            -0.42 \\
+            -0.52 \\
+            -0.45 \\
+        \end{bmatrix}, \quad
+        \sigma_1 = 2.12, \quad
+        v_1^\top = \begin{bmatrix}
+            -0.85 & -0.53 \\
+        \end{bmatrix}
+    \]
+    4. Calculate $\sqrt{\sigma_1} = \sqrt{2.12} = 1.46$.
+\end{frame}
+
+\begin{frame}{Example: Step 3 - Multi-Scale Compensation (Part 4)}
+    5. Calculate $h_0$ and $\ell_{u,0}$ by distributing $\sqrt{\sigma_1}$:
+    \[
+        h_0 = u_1 \sqrt{\sigma_1} = \begin{bmatrix}
+            -0.59 \\
+            -0.42 \\
+            -0.52 \\
+            -0.45 \\
+        \end{bmatrix} \cdot 1.46 = \begin{bmatrix}
+            -0.85 \\
+            -0.62 \\
+            -0.76 \\
+            -0.65 \\
+        \end{bmatrix}
+    \]
+    \[
+        \ell_{u,0}^\top = \sqrt{\sigma_1} v_1^\top = 1.46 \cdot \begin{bmatrix}
+            -0.85 & -0.53 \\
+        \end{bmatrix} = \begin{bmatrix}
+            -1.24 & -0.77 \\
+        \end{bmatrix}
+    \]
+\end{frame}
+
+\begin{frame}{Example: Step 3 - Multi-Scale Compensation (Part 5)}
+    6. Similarly for $|V'|$, we obtain $g_0$ and $\ell_{v,0}$:
+    \[
+        g_0 = \begin{bmatrix}
+            -0.83 \\
+            -0.46 \\
+            -0.80 \\
+            -0.69 \\
+        \end{bmatrix}, \quad
+        \ell_{v,0}^\top = \begin{bmatrix}
+            -1.25 & -0.68 \\
+        \end{bmatrix}
+    \]
+    7. Calculate final latent scale $\ell$ (element-wise product):
+    \[
+        \ell = \ell_{u,0} \odot \ell_{v,0} = \begin{bmatrix}
+            -1.24 \\
+            -0.77 \\
+        \end{bmatrix} \odot \begin{bmatrix}
+            -1.25 \\
+            -0.68 \\
+        \end{bmatrix} = \begin{bmatrix}
+            1.54 \\
+            0.53 \\
+        \end{bmatrix}
+    \]
+\end{frame}
+
+\begin{frame}{Example: Step 4 - Primary Approximation}
+    1. Scale Latent Columns: $A = U_{sign} \text{diag}(\ell)$
+    \[
+        A = \begin{bmatrix}
+            -1.54 & -0.53 \\
+            1.54  & -0.53 \\
+            -1.54 & 0.53  \\
+            1.54  & 0.53  \\
+        \end{bmatrix}
+    \]
+    2. Multiply by Binary $V$: $B = A V_{sign}^\top$
+    \[
+        B = \begin{bmatrix}
+            2.07  & -1.01 & 1.01  & -2.07 \\
+            -1.01 & 2.07  & -2.07 & 1.01  \\
+            1.01  & -2.07 & 2.07  & -1.01 \\
+            -2.07 & 1.01  & -1.01 & 2.07  \\
+        \end{bmatrix}
+    \]
+\end{frame}
+
+\begin{frame}{Example: Step 4 - Primary Approximation (Cont.)}
+    3. Apply Row Scale $h$: $C = \text{diag}(h) B$
+    \[
+        C = \begin{bmatrix}
+            -1.76 & 0.86  & -0.86 & 1.76  \\
+            0.63  & -1.28 & 1.28  & -0.63 \\
+            -0.77 & 1.58  & -1.58 & 0.77  \\
+            1.35  & -0.66 & 0.66  & -1.35 \\
+        \end{bmatrix}
+    \]
+    4. Apply Column Scale $g$: $\hat{W}_{pri} = C \text{diag}(g)$
+    \[
+        \hat{W}_{pri} = \begin{bmatrix}
+            1.47  & -0.40 & 0.70  & -1.22 \\
+            -0.52 & 0.59  & -1.02 & 0.43  \\
+            0.65  & -0.73 & 1.26  & -0.53 \\
+            -1.13 & 0.31  & -0.53 & 0.93  \\
+        \end{bmatrix}
+    \]
+\end{frame}
+
+\begin{frame}{Example: Step 5 - Residual Approximation}
+    Calculate residual target: $W_{res\_target} = W - \hat{W}_{pri}$
+    \[
+        W_{res\_target} = \begin{bmatrix}
+            0.03  & -0.40 & -0.50 & 0.02 \\
+            0.02  & 0.61  & 0.12  & 0.07 \\
+            0.15  & 0.53  & 0.24  & 0.03 \\
+            -0.07 & 0.19  & 0.23  & 0.07 \\
+        \end{bmatrix}
+    \]
+    We apply the same LittleBit process (SVD, Binarize, Scale) to $W_{res\_target}$ to get $\hat{W}_{res}$:
+    \[
+        \hat{W}_{res} = \begin{bmatrix}
+            -0.05 & -0.35 & -0.48 & -0.03 \\
+            0.09  & 0.60  & 0.25  & 0.06  \\
+            0.07  & 0.53  & 0.22  & 0.04  \\
+            0.03  & 0.17  & 0.23  & 0.02  \\
+        \end{bmatrix}
+    \]
+\end{frame}
+
+\begin{frame}{Example: Step 6 - Final Effective Weight}
+    The final weight is the sum of primary and residual approximations:
+    \[ \hat{W} = \hat{W}_{pri} + \hat{W}_{res} \]
+    \begin{columns}
+        \begin{column}{0.5\textwidth}
+            \centering
+            Original $W$:
+            \[
+                \small
+                \begin{bmatrix}
+                    1.50  & -0.80 & 0.20  & -1.20 \\
+                    -0.50 & 1.20  & -0.90 & 0.50  \\
+                    0.80  & -0.20 & 1.50  & -0.50 \\
+                    -1.20 & 0.50  & -0.30 & 1.00  \\
+                \end{bmatrix}
+            \]
+        \end{column}
+        \begin{column}{0.5\textwidth}
+            \centering
+            Reconstructed $\hat{W}$:
+            \[
+                \small
+                \begin{bmatrix}
+                    1.42  & -0.75 & 0.22  & -1.25 \\
+                    -0.43 & 1.19  & -0.77 & 0.49  \\
+                    0.72  & -0.20 & 1.48  & -0.49 \\
+                    -1.10 & 0.48  & -0.30 & 0.95  \\
+                \end{bmatrix}
+            \]
+        \end{column}
+    \end{columns}
+\end{frame}
+
+\begin{frame}{Example: Step 7 - Training Loss Calculation}
+    Let random input $X$ (batch size 2, seq len 1, dim 4):
+    \[
+        X = \begin{bmatrix}
+            0.50  & -1.00 & 0.20 & 0.80  \\
+            -0.20 & 0.50  & 1.00 & -0.50 \\
+        \end{bmatrix}
+    \]
+    1. Teacher Output: $Y_{teacher} = X W^\top$
+    \[
+        Y_{teacher} = \begin{bmatrix}
+            0.63 & -1.23 & 0.50 & -0.36 \\
+            0.10 & -0.45 & 1.49 & -0.31 \\
+        \end{bmatrix}
+    \]
+    2. Student Output: $Y_{student} = X \hat{W}^\top$
+    \[
+        Y_{student} = \begin{bmatrix}
+            0.50 & -1.17 & 0.47 & -0.33 \\
+            0.18 & -0.33 & 1.48 & -0.31 \\
+        \end{bmatrix}
+    \]
+\end{frame}
+
+\begin{frame}{Example: Step 7 - Training Loss Calculation (Cont.)}
+    3. Calculate MSE Loss: $L = \frac{1}{N} \sum (Y_{teacher} - Y_{student})^2$
+    \[
+        \text{Diff} = \begin{bmatrix}
+            0.13  & -0.06 & 0.03 & -0.03 \\
+            -0.08 & -0.12 & 0.01 & 0.00  \\
+        \end{bmatrix}
+    \]
+    \[
+        \text{MSE} = 0.0052
+    \]
 \end{frame}
 
 \section{Conclusion}
