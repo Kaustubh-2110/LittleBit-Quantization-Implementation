@@ -1,0 +1,258 @@
+\documentclass{beamer}
+\usetheme{Madrid}
+\usecolortheme{default}
+
+\title{LittleBit: Ultra Low-Bit Quantization via Latent Factorization}
+\subtitle{Methodology Analysis and Detailed Explanation}
+\author{Analysis by Antigravity}
+\date{\today}
+
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+
+\begin{document}
+
+\begin{frame}
+    \titlepage
+\end{frame}
+
+\begin{frame}{Table of Contents}
+    \tableofcontents
+\end{frame}
+
+\section{Introduction}
+\begin{frame}{Introduction to LittleBit}
+    \begin{itemize}
+        \item \textbf{Problem}: Deploying LLMs on resource-constrained devices is difficult due to memory and compute costs.
+        \item \textbf{Solution}: LittleBit, a novel quantization method targeting sub-1-bit per weight (e.g., 0.1 BPW).
+        \item \textbf{Key Idea}: Represents weights using low-rank latent factorization followed by binarization and multi-scale compensation.
+        \item \textbf{Performance}: Achieves state-of-the-art results in extreme compression regimes (0.1 - 0.55 BPW).
+    \end{itemize}
+\end{frame}
+
+\section{Methodology Overview}
+\begin{frame}{Methodology Overview}
+    The LittleBit methodology consists of three main components:
+    \begin{enumerate}
+        \item \textbf{LittleBit Architecture}:
+            \begin{itemize}
+                \item Latent Factorization ($W \approx UV^\top$)
+                \item Binarization ($U_{sign}, V_{sign}$)
+                \item Multi-Scale Compensation ($h, g, \ell$)
+            \end{itemize}
+        \item \textbf{Dual-SVID Initialization}:
+            \begin{itemize}
+                \item Smart initialization of parameters using SVD.
+            \end{itemize}
+        \item \textbf{Residual Compensation}:
+            \begin{itemize}
+                \item A secondary path to correct approximation errors.
+            \end{itemize}
+    \end{enumerate}
+\end{frame}
+
+\section{Step 1: Latent Factorization}
+\begin{frame}{Step 1: Latent Factorization}
+    \textbf{Concept}:
+    \begin{itemize}
+        \item LLM weight matrices often exhibit low-rank structure.
+        \item Instead of storing the full matrix $W \in \mathbb{R}^{d_{out} \times d_{in}}$, we approximate it as the product of two smaller matrices.
+    \end{itemize}
+    
+    \textbf{Equation}:
+    \[ W \approx U V^\top \]
+    where:
+    \begin{itemize}
+        \item $U \in \mathbb{R}^{d_{out} \times r}$
+        \item $V \in \mathbb{R}^{d_{in} \times r}$
+        \item $r \ll \min(d_{out}, d_{in})$ is the latent rank.
+    \end{itemize}
+\end{frame}
+
+\begin{frame}{Step 1: Example}
+    Let $W$ be a $4 \times 4$ matrix and rank $r=2$.
+    \[
+    W = \begin{bmatrix}
+    1.2 & 0.8 & -0.5 & 1.0 \\
+    -1.0 & -0.6 & 0.4 & -0.8 \\
+    0.5 & 0.3 & -0.2 & 0.4 \\
+    2.0 & 1.4 & -0.9 & 1.8
+    \end{bmatrix}
+    \]
+    We decompose this into $U$ ($4 \times 2$) and $V^\top$ ($2 \times 4$).
+    \[
+    U = \begin{bmatrix}
+    0.5 & 0.1 \\
+    -0.4 & 0.2 \\
+    0.2 & -0.1 \\
+    0.8 & 0.3
+    \end{bmatrix}, \quad
+    V^\top = \begin{bmatrix}
+    2.0 & 1.5 & -1.0 & 1.8 \\
+    1.0 & 0.5 & 0.2 & 0.4
+    \end{bmatrix}
+    \]
+    The product $UV^\top$ approximates $W$.
+\end{frame}
+
+\section{Step 2: Binarization}
+\begin{frame}{Step 2: Binarization}
+    \textbf{Concept}:
+    \begin{itemize}
+        \item To achieve extreme compression, the factors $U$ and $V$ are binarized to $\pm 1$.
+        \item This reduces storage from 16-bit FP to 1-bit per element.
+    \end{itemize}
+    
+    \textbf{Equation}:
+    \[ U_{sign} = \text{sign}(U), \quad V_{sign} = \text{sign}(V) \]
+    Values in $U_{sign}, V_{sign} \in \{-1, +1\}$.
+\end{frame}
+
+\begin{frame}{Step 2: Example}
+    Using the previous $U$:
+    \[
+    U = \begin{bmatrix}
+    0.5 & 0.1 \\
+    -0.4 & 0.2 \\
+    0.2 & -0.1 \\
+    0.8 & 0.3
+    \end{bmatrix}
+    \xrightarrow{\text{sign}}
+    U_{sign} = \begin{bmatrix}
+    +1 & +1 \\
+    -1 & +1 \\
+    +1 & -1 \\
+    +1 & +1
+    \end{bmatrix}
+    \]
+    Similarly for $V$.
+    \vspace{0.5cm}
+    
+    \textit{Note}: This drastic quantization causes significant information loss (magnitude information is lost).
+\end{frame}
+
+\section{Step 3: Multi-Scale Compensation}
+\begin{frame}{Step 3: Multi-Scale Compensation}
+    \textbf{Concept}:
+    \begin{itemize}
+        \item To recover the lost magnitude information, LittleBit introduces learnable FP16 scales.
+        \item Scales are applied across three dimensions: Row, Column, and Latent.
+    \end{itemize}
+    
+    \textbf{Scales}:
+    \begin{itemize}
+        \item \textbf{Row Scale} $h \in \mathbb{R}^{d_{out}}$: Captures output channel magnitude.
+        \item \textbf{Column Scale} $g \in \mathbb{R}^{d_{in}}$: Captures input channel magnitude.
+        \item \textbf{Latent Scale} $\ell \in \mathbb{R}^{r}$: Captures the importance of each latent rank.
+    \end{itemize}
+    
+    \textbf{Reconstruction}:
+    \[ \hat{W}_{pri} = \text{diag}(h) \cdot U_{sign} \cdot \text{diag}(\ell) \cdot V_{sign}^\top \cdot \text{diag}(g) \]
+\end{frame}
+
+\begin{frame}{Step 3: Example}
+    Let $r=2$.
+    Latent scale $\ell = [2.5, 0.5]^\top$.
+    Row scale $h = [1.0, 0.8, 0.5, 1.2]^\top$.
+    
+    The term $U_{sign} \cdot \text{diag}(\ell)$ scales the columns of the binary matrix $U_{sign}$:
+    \[
+    \begin{bmatrix}
+    +1 & +1 \\
+    -1 & +1 \\
+    +1 & -1 \\
+    +1 & +1
+    \end{bmatrix}
+    \cdot
+    \begin{bmatrix}
+    2.5 & 0 \\
+    0 & 0.5
+    \end{bmatrix}
+    =
+    \begin{bmatrix}
+    2.5 & 0.5 \\
+    -2.5 & 0.5 \\
+    2.5 & -0.5 \\
+    2.5 & 0.5
+    \end{bmatrix}
+    \]
+    This restores relative importance to the binary features.
+\end{frame}
+
+\section{Step 4: Dual-SVID Initialization}
+\begin{frame}{Step 4: Dual-SVID Initialization}
+    \textbf{Problem}: Random initialization of $U, V, h, g, \ell$ leads to unstable training.
+    
+    \textbf{Solution}: Dual-SVID.
+    \begin{enumerate}
+        \item Perform SVD on $W$: $W \approx U' \Sigma V'^\top$. Absorb $\Sigma$ into $U', V'$.
+        \item Initialize binary factors: $U_{sign,0} = \text{sign}(U')$.
+        \item Initialize scales by approximating the \textit{magnitudes} $|U'|$ and $|V'|$.
+    \end{enumerate}
+    
+    \textbf{Magnitude Decomposition}:
+    \[ |U'| \approx h_0 (\ell_{u,0})^\top \]
+    We use a rank-1 approximation on the magnitude matrix $|U'|$ to separate the row-wise scale ($h_0$) from the latent-wise scale ($\ell_{u,0}$).
+    
+    Final latent scale $\ell_0 = \ell_{u,0} \odot \ell_{v,0}$.
+\end{frame}
+
+\section{Step 5: Residual Compensation}
+\begin{frame}{Step 5: Residual Compensation}
+    \textbf{Concept}:
+    \begin{itemize}
+        \item A single low-rank binary approximation might miss details.
+        \item Add a second "Residual" path to model the error.
+    \end{itemize}
+    
+    \textbf{Architecture}:
+    \[ \hat{W} = \hat{W}_{pri} + \hat{W}_{res} \]
+    \begin{itemize}
+        \item $\hat{W}_{pri}$: Primary approximation (learns main structure).
+        \item $\hat{W}_{res}$: Residual approximation (learns the error $W - \hat{W}_{pri}$).
+    \end{itemize}
+    
+    Both paths use the same factorized structure but with independent parameters.
+    This effectively doubles the rank but allows for specialized error correction without increasing the storage format complexity (just more parameters).
+\end{frame}
+
+\begin{frame}{Step 5: Example}
+    Target $W_{val} = 1.2$.
+    \begin{itemize}
+        \item \textbf{Primary Path}: Approximates as $1.0$. Error $= 0.2$.
+        \item \textbf{Residual Path}: Targets $0.2$. Approximates as $0.25$.
+        \item \textbf{Total}: $1.0 + 0.25 = 1.25$.
+    \end{itemize}
+    Error reduced from $0.2$ to $0.05$.
+    
+    The residual path is initialized using Dual-SVID on the residual matrix $W_{res,0} = W - \hat{W}_{pri,0}$.
+\end{frame}
+
+\section{Training}
+\begin{frame}{Training Strategy}
+    \textbf{Quantization-Aware Training (QAT)}:
+    \begin{itemize}
+        \item The model is trained end-to-end.
+        \item \textbf{Knowledge Distillation}: Uses the original FP16 model as a teacher.
+        \item \textbf{Loss Function}:
+        \[ L_{QAT} = L_{out} (KL) + \lambda L_{inter} (MSE) \]
+        \item \textbf{Gradient Approximation}:
+        Since $\text{sign}(x)$ is non-differentiable, \textbf{SmoothSign} is used for backpropagation:
+        \[ \frac{\partial \text{sign}(x)}{\partial x} \approx \frac{\partial \tanh(kx)}{\partial x} \]
+        with $k=100$.
+    \end{itemize}
+\end{frame}
+
+\section{Conclusion}
+\begin{frame}{Conclusion}
+    \begin{itemize}
+        \item LittleBit enables extreme LLM compression (down to 0.1 BPW).
+        \item It combines latent factorization, binarization, and multi-scale compensation.
+        \item Dual-SVID initialization and Residual Compensation are critical for performance.
+        \item Results show superior performance over existing methods like STBLLM in sub-1-bit regimes.
+    \end{itemize}
+\end{frame}
+
+\end{document}
